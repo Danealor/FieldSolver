@@ -8,6 +8,52 @@ namespace FieldSolver
 {
     static class Functions
     {
+        public const double C = 299792458; // m/s
+
+        public struct FourierElement
+        {
+            public double Time { get; set; }
+            public double Displacement { get; set; }
+
+            public double AmplitudeAt(double frequency)
+            {
+                return Displacement * Math.Sin(2 * Math.PI * frequency * Time);
+            }
+        }
+
+        public struct Point
+        {
+            public double X { get; set; }
+            public double Y { get; set; }
+
+            public Point RelativeTo(Point reference)
+            {
+                return new Point { X = X - reference.X, Y = Y - reference.Y };
+            }
+
+            public double DistanceFromOrigin()
+            {
+                return Math.Sqrt(X * X + Y * Y);
+            }
+
+            public double DistanceFrom(Point p)
+            {
+                return p.RelativeTo(this).DistanceFromOrigin();
+            }
+        }
+
+        public struct Node
+        {
+            public Point Position { get; set; }
+            public List<FourierElement> Waveform { get; set; }
+
+            public double CalculateFieldAt(Point pos, double t, double d, double f)
+            {
+                Point relPos = pos.RelativeTo(Position);
+                return CalculateFieldAmplitude(CalculateTimePhase(relPos, t), Waveform, d, f) / (relPos.X * relPos.X + relPos.Y * relPos.Y);
+            }
+        }
+
         /// <summary>
         /// Calculates the sine integral of x using Padé approximants with a formula given by Rowe et al (2015).
         /// Accurate to better than 10^-16.
@@ -64,6 +110,29 @@ namespace FieldSolver
 
                 return Math.PI / 2 - f * Math.Cos(x) - g * Math.Sin(x);
             }
+        }
+
+        public static double CalculateTimePhase(Point relPos, double t)
+        {
+            return t + relPos.DistanceFromOrigin() / C;
+        }
+
+        public static double CalculateField(double t, double x, double d, double f)
+        {
+            const double a = 2 * Math.PI;
+            double neg = Si(a * f * (x - t - d)) - Si(a * f * (x - t));
+            double pos = Si(a * f * (x + t + d)) - Si(a * f * (x + t));
+            return (neg + pos) / -a;
+        }
+
+        public static double CalculateFieldAmplitude(double t, IEnumerable<FourierElement> modulationElements, double d, double f)
+        {
+            return 0.5 * modulationElements.Sum(elem => elem.Displacement * CalculateField(t, elem.Time, d, f));
+        }
+
+        public static double CalculateFieldTotal(Point pos, IEnumerable<Node> nodes, double t, double d, double f)
+        {
+            return nodes.Sum(node => node.CalculateFieldAt(pos, t, d, f));
         }
     }
 }
